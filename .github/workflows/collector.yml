@@ -28,8 +28,6 @@ jobs:
           python-version: "3.11"
 
       - name: Collect public profile snapshot
-        id: collect
-        continue-on-error: true
         run: |
           python - <<'PY'
           import json
@@ -43,6 +41,34 @@ jobs:
               print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
           PY
 
+      - name: Collect newly observed posts
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from src.collector import extract_post_urls
+          from src.post_collector import fetch_post, parse_post, record_post, POSTS
+          observations = Path("data/observations.jsonl")
+          urls = []
+          if observations.exists():
+              for line in observations.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      urls.extend(json.loads(line).get("post_urls", []))
+          seen = set()
+          for url in urls:
+              if url in seen:
+                  continue
+              seen.add(url)
+              if len(seen) > 30:
+                  break
+              try:
+                  record_post(parse_post(fetch_post(url), url))
+              except Exception as exc:
+                  print(f"post fetch failed: {url} :: {type(exc).__name__}: {exc}")
+          print(f"checked {len(seen)} post URLs")
+          PY
+
       - name: Generate report
         run: python -m src.report > data/latest_report.json
 
@@ -50,7 +76,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/observations.jsonl data/latest_report.json
+          git add data/observations.jsonl data/posts.jsonl data/latest_report.json
           git diff --cached --quiet || git commit -m "Update Instagram tipster observation"
           git pull --rebase origin main
           git push origin HEAD:main

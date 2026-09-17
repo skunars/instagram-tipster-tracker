@@ -2,30 +2,40 @@
 
 A standalone research and paper-tracking system for monitoring the public predictions of the Instagram account `kahinmahrezz`.
 
-## Purpose
+## What it does
 
-The system does **not** place real bets. It records publicly observable tips, preserves first-seen timestamps, tracks outcomes, and measures whether claims such as consistently hitting 10+ selections can be supported by data.
+- polls the public profile on a 15-minute schedule
+- preserves first-seen observations with SHA-256 fingerprints
+- extracts observed post/reel/TV URLs without assuming missing data
+- fetches observed post pages and preserves public title/description/image metadata
+- keeps original observations immutable; later outcomes are written as separate settlement records
+- supports deterministic tip IDs and duplicate protection
+- supports virtual 1,000 TL bankroll tracking with 100 TL per-selection paper stake
+- reports selection hit rate, full-coupon hit rate, coupon counts, market distribution and virtual P/L
+- runs isolated tests on every push/PR
 
-## What we track
+## Outcome tracking
 
-- source account
-- post/reel identifier when available
-- first-seen timestamp
-- match/event
-- market
-- selection
-- odds when available
-- coupon/accumulator grouping
-- outcome
-- deleted/edited observation when detectable
-- virtual paper P/L
-- per-selection hit rate
-- full-coupon hit rate
-- coupon length and odds distribution
+A tip is never rewritten after publication. When a result becomes observable, `settle.py` appends a separate settlement event:
+
+```text
+python settle.py TIP_ID WON --evidence-url "https://..." --note "verified final score"
+```
+
+Allowed outcomes are `WON`, `LOST`, and `VOID`. The report uses the latest settlement event for each tip ID.
+
+## Data files
+
+- `data/observations.jsonl` — immutable profile observations
+- `data/posts.jsonl` — immutable public post-page observations
+- `data/tips.jsonl` — structured tips when they can be extracted without guessing
+- `data/settlements.jsonl` — separate outcome/evidence events
+- `data/latest_report.json` — latest calculated paper statistics
+- `data/snapshots/` — optional local raw HTML snapshots when the collector is run directly
 
 ## Important limitation
 
-Instagram does not provide a simple public historical API for arbitrary accounts. The collector is therefore designed around **observable public data** and immutable local records. It must never invent missing tips or outcomes.
+Instagram does not provide a simple public historical API for arbitrary accounts, and some content may be rendered dynamically or exist only inside an image/video. The collector therefore records only what is publicly observable. It must never invent a match, market, odds, publication time, or result. Image/video-only tips remain unclassified until reliable evidence is available.
 
 ## Repository isolation
 
@@ -33,10 +43,4 @@ This repository is intentionally separate from the other sports, crypto, and tra
 
 ## Status
 
-Phase 1: data model + paper-tracking foundation.
-
-Phase 2: public-source collection and evidence preservation.
-
-Phase 3: outcome reconciliation and statistical reporting.
-
-Phase 4: optional external runner/automation once the dataset proves useful.
+**Foundation complete and ready for data collection.** The remaining work is data accumulation: observe enough real posts and verified outcomes to measure whether the account's claimed performance is supported by evidence. This is a research/paper-tracking system, not a real-money betting system.

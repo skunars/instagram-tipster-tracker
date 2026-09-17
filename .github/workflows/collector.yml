@@ -1,0 +1,56 @@
+name: Instagram Tipster Collector
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram-tipster-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Collect public profile snapshot
+        id: collect
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json
+          from src.collector import fetch_public_profile, save_snapshot, append_observation
+          try:
+              html = fetch_public_profile()
+              snapshot = save_snapshot(html, persist_raw=False)
+              changed = append_observation(snapshot)
+              print(json.dumps({"ok": True, "changed": changed, **snapshot.to_dict()}, ensure_ascii=False))
+          except Exception as exc:
+              print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
+          PY
+
+      - name: Generate report
+        run: python -m src.report > data/latest_report.json
+
+      - name: Persist collected metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/observations.jsonl data/latest_report.json
+          git diff --cached --quiet || git commit -m "Update Instagram tipster observation"
+          git pull --rebase origin main
+          git push origin HEAD:main

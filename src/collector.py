@@ -12,7 +12,7 @@ SOURCE = "kahinmahrezz"
 PROFILE_URL = f"https://www.instagram.com/{SOURCE}/"
 SNAPSHOT_DIR = Path("data/snapshots")
 OBSERVATION_FILE = Path("data/observations.jsonl")
-POST_RE = re.compile(r"/(?:p|reel|tv)/([A-Za-z0-9_-]+)/")
+POST_RE = re.compile(r"/(p|reel|tv)/([A-Za-z0-9_-]+)/")
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,8 @@ def fetch_public_profile(url: str = PROFILE_URL, timeout: int = 20) -> bytes:
 
 def extract_post_urls(html: bytes) -> tuple[str, ...]:
     text = html.decode("utf-8", errors="ignore")
-    ids = sorted(set(POST_RE.findall(text)))
-    return tuple(f"https://www.instagram.com/p/{post_id}/" for post_id in ids)
+    urls = {f"https://www.instagram.com/{kind}/{post_id}/" for kind, post_id in POST_RE.findall(text)}
+    return tuple(sorted(urls))
 
 
 def save_snapshot(html: bytes, url: str = PROFILE_URL, persist_raw: bool = True) -> Snapshot:

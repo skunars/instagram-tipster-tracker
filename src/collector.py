@@ -3,15 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 from urllib.request import Request, urlopen
 
 SOURCE = "kahinmahrezz"
 PROFILE_URL = f"https://www.instagram.com/{SOURCE}/"
 SNAPSHOT_DIR = Path("data/snapshots")
+OBSERVATION_FILE = Path("data/observations.jsonl")
 POST_RE = re.compile(r"/(?:p|reel|tv)/([A-Za-z0-9_-]+)/")
 
 
@@ -50,8 +50,7 @@ def extract_post_urls(html: bytes) -> tuple[str, ...]:
     return tuple(f"https://www.instagram.com/p/{post_id}/" for post_id in ids)
 
 
-def save_snapshot(html: bytes, url: str = PROFILE_URL) -> Snapshot:
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+def save_snapshot(html: bytes, url: str = PROFILE_URL, persist_raw: bool = True) -> Snapshot:
     digest = hashlib.sha256(html).hexdigest()
     snapshot = Snapshot(
         source=SOURCE,
@@ -61,14 +60,30 @@ def save_snapshot(html: bytes, url: str = PROFILE_URL) -> Snapshot:
         byte_length=len(html),
         post_urls=extract_post_urls(html),
     )
-    (SNAPSHOT_DIR / f"{digest}.html").write_bytes(html)
-    (SNAPSHOT_DIR / f"{digest}.json").write_text(
-        json.dumps(snapshot.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    if persist_raw:
+        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        (SNAPSHOT_DIR / f"{digest}.html").write_bytes(html)
+        (SNAPSHOT_DIR / f"{digest}.json").write_text(
+            json.dumps(snapshot.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     return snapshot
+
+
+def append_observation(snapshot: Snapshot) -> bool:
+    OBSERVATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    existing = set()
+    if OBSERVATION_FILE.exists():
+        for line in OBSERVATION_FILE.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                existing.add(json.loads(line).get("sha256"))
+    if snapshot.sha256 in existing:
+        return False
+    with OBSERVATION_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(snapshot.to_dict(), ensure_ascii=False, sort_keys=True) + "\n")
+    return True
 
 
 if __name__ == "__main__":
     html = fetch_public_profile()
-    snapshot = save_snapshot(html)
+    snapshot = save_snapshot(html, persist_raw=True)
     print(json.dumps(snapshot.to_dict(), ensure_ascii=False, indent=2))
